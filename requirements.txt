@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn>=0.27
+strawberry-graphql[fastapi]>=0.219
+spyne>=2.14
+lxml>=4.9
+grpcio>=1.60
+grpcio-tools>=1.60
+protobuf>=4.25

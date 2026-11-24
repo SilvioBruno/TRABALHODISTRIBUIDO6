@@ -1,0 +1,41 @@
+query ConsultasDoEnunciado {
+  usuarios {
+    id
+    nome
+    idade
+    playlists {
+      nome
+    }
+  }
+  musicas {
+    id
+    nome
+    artista
+  }
+  playlistsDoUsuario(usuarioId: 1) {
+    id
+    nome
+    musicas {
+      nome
+      artista
+    }
+  }
+  musicasDaPlaylist(playlistId: 1) {
+    id
+    nome
+    artista
+  }
+  playlistsComMusica(musicaId: 2) {
+    id
+    nome
+    usuarioId
+  }
+}
+
+mutation CriarMusica {
+  criarMusica(nome: "Construção", artista: "Chico Buarque") {
+    id
+    nome
+    artista
+  }
+}

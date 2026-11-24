@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package streaming;
+
+// CRUD e as consultas do enunciado. Campo optional distingue "ausente" de zero.
+service StreamingMusicas {
+  rpc CriarUsuario(CriarUsuarioRequest) returns (Usuario);
+  rpc ObterUsuario(Id) returns (Usuario);
+  rpc ListarUsuarios(Vazio) returns (ListaUsuarios);
+  rpc AtualizarUsuario(AtualizarUsuarioRequest) returns (Usuario);
+  rpc RemoverUsuario(Id) returns (Vazio);
+
+  rpc CriarMusica(CriarMusicaRequest) returns (Musica);
+  rpc ObterMusica(Id) returns (Musica);
+  rpc ListarMusicas(Vazio) returns (ListaMusicas);
+  rpc AtualizarMusica(AtualizarMusicaRequest) returns (Musica);
+  rpc RemoverMusica(Id) returns (Vazio);
+
+  rpc CriarPlaylist(CriarPlaylistRequest) returns (Playlist);
+  rpc ObterPlaylist(Id) returns (Playlist);
+  rpc ListarPlaylists(Vazio) returns (ListaPlaylists);
+  rpc AtualizarPlaylist(AtualizarPlaylistRequest) returns (Playlist);
+  rpc RemoverPlaylist(Id) returns (Vazio);
+
+  rpc ListarPlaylistsDoUsuario(Id) returns (ListaPlaylists);
+  rpc ListarMusicasDaPlaylist(Id) returns (ListaMusicas);
+  rpc ListarPlaylistsComMusica(Id) returns (ListaPlaylists);
+  rpc AdicionarMusicaNaPlaylist(PlaylistMusicaRequest) returns (Playlist);
+  rpc RemoverMusicaDaPlaylist(PlaylistMusicaRequest) returns (Playlist);
+}
+
+message Vazio {}
+
+message Id {
+  int32 id = 1;
+}
+
+message Usuario {
+  int32 id = 1;
+  string nome = 2;
+  int32 idade = 3;
+}
+
+message Musica {
+  int32 id = 1;
+  string nome = 2;
+  string artista = 3;
+}
+
+message Playlist {
+  int32 id = 1;
+  string nome = 2;
+  int32 usuario_id = 3;
+  repeated Musica musicas = 4;
+}
+
+message CriarUsuarioRequest {
+  string nome = 1;
+  int32 idade = 2;
+}
+
+message AtualizarUsuarioRequest {
+  int32 id = 1;
+  optional string nome = 2;
+  optional int32 idade = 3;
+}
+
+message CriarMusicaRequest {
+  string nome = 1;
+  string artista = 2;
+}
+
+message AtualizarMusicaRequest {
+  int32 id = 1;
+  optional string nome = 2;
+  optional string artista = 3;
+}
+
+message CriarPlaylistRequest {
+  string nome = 1;
+  int32 usuario_id = 2;
+  repeated int32 musica_ids = 3;
+}
+
+message AtualizarPlaylistRequest {
+  int32 id = 1;
+  optional string nome = 2;
+  repeated int32 musica_ids = 3;
+  bool substituir_musicas = 4;
+}
+
+message PlaylistMusicaRequest {
+  int32 playlist_id = 1;
+  int32 musica_id = 2;
+}
+
+message ListaUsuarios {
+  repeated Usuario usuarios = 1;
+}
+
+message ListaMusicas {
+  repeated Musica musicas = 1;
+}
+
+message ListaPlaylists {
+  repeated Playlist playlists = 1;
+}

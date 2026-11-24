@@ -1,0 +1,306 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{listings}
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single,
+  showstringspaces=false,
+  literate={á}{{\'a}}1 {ã}{{\~a}}1 {ç}{{\c{c}}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {Á}{{\'A}}1
+}
+
+\title{Comparação de tecnologias de invocação de serviços remotos}
+\subtitle{Serviço de streaming de músicas --- beta, sem teste de carga}
+\author{Integrante 1 \and Integrante 2 \and Integrante 3}
+\institute{Computação Distribuída\\Prof. Nabor C. Mendonça}
+\date{Novembro de 2026}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Equipe}
+  \begin{itemize}
+    \item Integrante 1 --- preencher nome e matrícula
+    \item Integrante 2 --- preencher nome e matrícula
+    \item Integrante 3 --- preencher nome e matrícula
+  \end{itemize}
+  Linguagem única do trabalho: Python 3.\\
+  Este arquivo é um beta: a comparação de carga fica para a versão final.
+\end{frame}
+
+\begin{frame}{Roteiro}
+  \tableofcontents
+\end{frame}
+
+\section{Serviço}
+
+\begin{frame}{O que o enunciado pede}
+  Quatro tecnologias de invocação remota cobrem a mesma necessidade: SOAP, REST, GraphQL e gRPC.
+  \vspace{0.4em}
+  O serviço de streaming gerencia três recursos ligados entre si:
+  \begin{itemize}
+    \item usuários;
+    \item músicas;
+    \item playlists.
+  \end{itemize}
+  O cliente precisa listar todos os usuários, todas as músicas, as playlists de um usuário, as músicas de uma playlist e as playlists que contêm uma música.
+\end{frame}
+
+\begin{frame}{Modelo do diagrama}
+  \centering
+  \begin{tikzpicture}[
+      caixa/.style={draw, align=center, font=\small, inner sep=3pt, minimum width=2.7cm},
+      seta/.style={-{Stealth[length=2mm]}, font=\scriptsize}
+    ]
+    \node[caixa] (usuarios) {coleção\\Usuários};
+    \node[caixa, below=0.85cm of usuarios] (usuario) {Usuário\\{\scriptsize ID, Nome, Idade}};
+    \node[caixa, right=1.15cm of usuario] (playlists) {coleção\\Playlists};
+    \node[caixa, below=0.85cm of playlists] (playlist) {Playlist\\{\scriptsize ID, Nome}};
+    \node[caixa, right=1.15cm of playlists] (musicas) {coleção\\Músicas};
+    \node[caixa, below=0.85cm of musicas] (musica) {Música\\{\scriptsize ID, Nome, Artista}};
+    \draw[seta] (usuarios) -- node[right] {0..*} (usuario);
+    \draw[seta] (musicas) -- node[right] {0..*} (musica);
+    \draw[seta] (usuario) -- node[above] {1..1} (playlists);
+    \draw[seta] (playlists) -- node[right] {0..*} (playlist);
+    \draw[{Stealth}-{Stealth}, font=\scriptsize] (playlist.east)
+      -- node[near start, above] {0..*} node[near end, above] {1..*} (musica.west);
+  \end{tikzpicture}
+\end{frame}
+
+\begin{frame}{Regras que saem do diagrama}
+  \begin{itemize}
+    \item O catálogo guarda 0..* usuários e 0..* músicas.
+    \item Cada usuário tem exatamente uma coleção de playlists, e essa coleção tem 0..* playlists.
+    \item Uma playlist contém 1..* músicas. Uma música entra em 0..* playlists.
+    \item Por isso a playlist já nasce com ao menos uma música e a API recusa esvaziá-la.
+    \item Apagar o usuário apaga as playlists dele. As músicas continuam no catálogo.
+  \end{itemize}
+  A implementação guarda os dados em memória. Reiniciar o processo volta à carga inicial: Ana, Bruno, quatro músicas e três playlists.
+\end{frame}
+
+\begin{frame}{As cinco consultas}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Consulta & REST & GraphQL / SOAP / gRPC \\
+    \midrule
+    Todos os usuários & \texttt{GET /usuarios} & \texttt{usuarios} / \texttt{listarUsuarios} \\
+    Todas as músicas & \texttt{GET /musicas} & \texttt{musicas} / \texttt{listarMusicas} \\
+    Playlists do usuário & \texttt{GET /usuarios/\{id\}/playlists} & \texttt{playlistsDoUsuario} \\
+    Músicas da playlist & \texttt{GET /playlists/\{id\}/musicas} & \texttt{musicasDaPlaylist} \\
+    Playlists com a música & \texttt{GET /musicas/\{id\}/playlists} & \texttt{playlistsComMusica} \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.7em}
+  SOAP e gRPC usam os mesmos nomes de operação: \texttt{listarPlaylistsDoUsuario}, \texttt{listarMusicasDaPlaylist} e \texttt{listarPlaylistsComMusica}.
+\end{frame}
+
+\section{Tecnologias}
+
+\begin{frame}{Como o código está organizado}
+  As quatro APIs chamam o mesmo núcleo, \texttt{streaming/servico.py}.
+  A regra de negócio não muda com o protocolo. O que muda é o contrato, o formato da mensagem e o estilo da chamada.
+  \vspace{0.5em}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    Servidor & Endereço \\
+    \midrule
+    REST & \texttt{127.0.0.1:8001} \\
+    GraphQL & \texttt{127.0.0.1:8002/graphql} \\
+    SOAP & \texttt{127.0.0.1:8003/?wsdl} \\
+    gRPC & \texttt{127.0.0.1:8004} \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{SOAP}
+  \textbf{Origem.} O SOAP 1.1 surgiu em 2000, com a Microsoft e parceiros. O W3C padronizou o SOAP 1.2. O nome deixou de ser lido como sigla.
+  \vspace{0.35em}
+  \textbf{Características.} Envelope XML, falhas explícitas e contrato WSDL. O transporte usual é HTTP. A chamada tem nome de operação, no estilo RPC.
+  \vspace{0.35em}
+  \textbf{Vantagens.} Contrato formal, ferramentas que geram cliente a partir do WSDL e modelo de erro padronizado.
+  \vspace{0.35em}
+  \textbf{Desvantagens.} XML verboso, difícil de cachear e trabalhoso para um CRUD simples. Cada consulta do enunciado virou uma operação a mais no WSDL.
+\end{frame}
+
+\begin{frame}[fragile]{SOAP --- trecho}
+\begin{lstlisting}[language=Python]
+class StreamingSoap(ServiceBase):
+    @rpc(Unicode, Integer, _returns=UsuarioSoap)
+    def criarUsuario(ctx, nome, idade):
+        return _chamar(lambda: _usuario(
+            servico.criar_usuario(nome, idade)))
+
+    @rpc(Integer, _returns=Array(PlaylistSoap))
+    def listarPlaylistsDoUsuario(ctx, usuarioId):
+        return _chamar(lambda: [_playlist(item) for item
+            in servico.listar_playlists_do_usuario(usuarioId)])
+\end{lstlisting}
+O WSDL sai em \texttt{http://127.0.0.1:8003/?wsdl}. Um erro de negócio volta como \texttt{Fault} com código \texttt{Client.NAO\_ENCONTRADO}, \texttt{Client.VALIDACAO} ou \texttt{Client.CONFLITO}.
+\end{frame}
+
+\begin{frame}{REST}
+  \textbf{Origem.} REST é o estilo arquitetural descrito por Roy Fielding na tese de 2000. Não é um protocolo nem um formato.
+  \vspace{0.35em}
+  \textbf{Características.} Recursos identificados por URL, verbos HTTP e representação JSON neste trabalho. A aplicação é sem estado: cada pedido traz o que o servidor precisa.
+  \vspace{0.35em}
+  \textbf{Vantagens.} Mapeia direto o CRUD das três coleções. É simples de testar no navegador e em \texttt{curl}. O cache do HTTP cabe melhor aqui do que nas outras três.
+  \vspace{0.35em}
+  \textbf{Desvantagens.} As consultas de relacionamento pedem rotas extras. O cliente que quer playlist e músicas juntas depende de como o servidor montou o JSON. O formato de erro é convenção da API, não do estilo.
+\end{frame}
+
+\begin{frame}[fragile]{REST --- trecho}
+\begin{lstlisting}[language=Python]
+@app.post("/usuarios", status_code=201)
+def criar_usuario(corpo: UsuarioIn):
+    return servico.criar_usuario(corpo.nome, corpo.idade)
+
+@app.get("/usuarios/{usuario_id}/playlists")
+def playlists_do_usuario(usuario_id: int):
+    return servico.listar_playlists_do_usuario(usuario_id)
+
+@app.get("/playlists/{playlist_id}/musicas")
+def musicas_da_playlist(playlist_id: int):
+    return servico.listar_musicas_da_playlist(playlist_id)
+\end{lstlisting}
+A documentação interativa fica em \texttt{/docs}. \texttt{DELETE} responde 204. Validação responde 400, ausência responde 404 e música repetida na playlist responde 409.
+\end{frame}
+
+\begin{frame}{GraphQL}
+  \textbf{Origem.} O Facebook criou o GraphQL em 2012 e o abriu em 2015. Hoje está na GraphQL Foundation.
+  \vspace{0.35em}
+  \textbf{Características.} Um endpoint, um schema e uma consulta em que o cliente escolhe os campos. Há consultas e mutações. O servidor deste trabalho publica o schema em \texttt{/graphql}, com GraphiQL.
+  \vspace{0.35em}
+  \textbf{Vantagens.} As cinco consultas do enunciado cabem no schema, e o cliente ainda pode navegar de usuário para playlists e de música para playlists no mesmo pedido. Dá para pedir só \texttt{nome}, sem a lista de músicas.
+  \vspace{0.35em}
+  \textbf{Desvantagens.} Cache HTTP fica mais difícil. O servidor resolve campos sob demanda, então uma consulta aninhada repete idas ao núcleo. A curva é maior que a do REST para um CRUD tão pequeno.
+\end{frame}
+
+\begin{frame}[fragile]{GraphQL --- trecho}
+\begin{lstlisting}
+query ConsultasDoEnunciado {
+  usuarios { id nome idade }
+  musicas { id nome artista }
+  playlistsDoUsuario(usuarioId: 1) {
+    nome
+    musicas { nome artista }
+  }
+  musicasDaPlaylist(playlistId: 1) { nome artista }
+  playlistsComMusica(musicaId: 2) { id nome }
+}
+\end{lstlisting}
+A mutação \texttt{criarPlaylist} exige \texttt{nome}, \texttt{usuarioId} e \texttt{musicaIds}. Lista vazia é recusada pelo núcleo, com a mesma mensagem das outras APIs.
+\end{frame}
+
+\begin{frame}{gRPC}
+  \textbf{Origem.} O gRPC foi aberto pelo Google em 2015, a partir do sistema interno Stubby. Usa HTTP/2 e Protocol Buffers.
+  \vspace{0.35em}
+  \textbf{Características.} O contrato é o arquivo \texttt{.proto}. As ferramentas geram o servidor e o cliente. A mensagem é binária. A chamada tem nome, como no SOAP, com outro formato.
+  \vspace{0.35em}
+  \textbf{Vantagens.} Contrato rígido, mensagens compactas e bom encaixe entre serviços. O mesmo arquivo descreve as vinte operações do CRUD e das consultas.
+  \vspace{0.35em}
+  \textbf{Desvantagens.} Exige gerar código antes de subir o servidor. A mensagem binária é ruim de inspecionar à mão. No protobuf, o valor ausente e o zero se confundem, então nome e idade na atualização são \texttt{optional}.
+\end{frame}
+
+\begin{frame}[fragile]{gRPC --- trecho}
+\begin{lstlisting}
+service StreamingMusicas {
+  rpc CriarUsuario(CriarUsuarioRequest) returns (Usuario);
+  rpc ListarPlaylistsDoUsuario(Id) returns (ListaPlaylists);
+  rpc ListarMusicasDaPlaylist(Id) returns (ListaMusicas);
+  rpc ListarPlaylistsComMusica(Id) returns (ListaPlaylists);
+}
+
+message AtualizarUsuarioRequest {
+  int32 id = 1;
+  optional string nome = 2;
+  optional int32 idade = 3;
+}
+\end{lstlisting}
+\texttt{NOT\_FOUND}, \texttt{INVALID\_ARGUMENT} e \texttt{ALREADY\_EXISTS} correspondem aos três códigos do núcleo.
+\end{frame}
+
+\section{Comparação}
+
+\begin{frame}{Semelhanças e diferenças}
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}lllll@{}}
+    \toprule
+    & SOAP & REST & GraphQL & gRPC \\
+    \midrule
+    Contrato & WSDL & rotas e JSON & schema & \texttt{.proto} \\
+    Mensagem & XML & JSON & JSON & binário \\
+    Transporte & HTTP & HTTP & HTTP & HTTP/2 \\
+    Estilo & operação & recurso & consulta & operação \\
+    Cliente escolhe campos & não & não & sim & não \\
+    Atualização parcial & campo opcional & campo omitido & argumento omitido & \texttt{optional} \\
+    Inspeção manual & média & fácil & fácil & difícil \\
+    \bottomrule
+  \end{tabular}%
+  }
+
+  \vspace{0.6em}
+  \small
+  As quatro entregam o mesmo CRUD. A diferença prática apareceu no tamanho do contrato e em como a consulta de relacionamento é escrita.
+\end{frame}
+
+\begin{frame}{O que a implementação mostrou}
+  \begin{itemize}
+    \item Centralizar a regra em um módulo evitou quatro comportamentos diferentes para a cardinalidade 1..* da playlist.
+    \item No REST, usuários, músicas e playlists caíram em coleções. As três consultas de ligação precisaram de rotas novas.
+    \item No GraphQL, essas consultas são campos do schema, e o cliente monta o recorte. Foi o contrato mais curto para quem lê o pedido.
+    \item SOAP e gRPC pediram uma operação por ação. O contrato fica explícito e cresce rápido: são cerca de vinte operações para três recursos.
+    \item O gRPC foi o único que exigiu um passo de geração de código e campos \texttt{optional} para não tratar idade 0 como ``não enviado''.
+    \item O SOAP foi o mais longo de escrever e o mais claro para uma ferramenta que lê WSDL.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Leitura crítica, ainda sem carga}
+  Para este serviço, REST é a escolha mais direta: o domínio já é um conjunto de recursos. GraphQL compensa quando o cliente varia o recorte, como pedir a playlist com ou sem as músicas. SOAP se justifica quando o contrato formal e o ferramental pesam mais que o tamanho do XML. gRPC se justifica entre serviços, quando o contrato binário e o HTTP/2 importam mais que a facilidade de depurar.
+  \vspace{0.6em}
+  Essa leitura vem da experiência de implementar o mesmo CRUD. Ela ainda não diz qual tecnologia aguenta mais pedidos por segundo. Isso depende do teste de carga, que ficou de fora deste beta.
+\end{frame}
+
+\begin{frame}{Testes de carga}
+  Esta versão não mede latência nem vazão.
+  \vspace{0.5em}
+  A versão final deve repetir as mesmas cinco consultas nas quatro tecnologias, com a mesma carga inicial e com concorrência crescente, e colocar os gráficos aqui. Os números não foram estimados de propósito: um gráfico sem medição atrapalharia a comparação.
+\end{frame}
+
+\begin{frame}{Conclusão do beta}
+  \begin{itemize}
+    \item O serviço cobre criação, consulta, alteração e remoção de usuários, músicas e playlists, com as ligações do diagrama.
+    \item SOAP, REST, GraphQL e gRPC expõem essas operações em Python, sobre o mesmo núcleo.
+    \item O próximo passo da entrega é o teste de carga e o preenchimento dos nomes da equipe.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Referências}
+  \scriptsize
+  \begin{enumerate}
+    \item W3C. SOAP Version 1.2 Part 1: Messaging Framework. \url{https://www.w3.org/TR/soap12/}
+    \item Fielding, R. T. Architectural Styles and the Design of Network-Based Software Architectures. UC Irvine, 2000.
+    \item REST API Tutorial. \url{https://restfulapi.net/}
+    \item GraphQL. \url{https://graphql.org/}
+    \item gRPC. \url{https://grpc.io/}
+    \item Stowe, M. XML, SOAP, JSON, REST, GraphQL?
+    \item Brito, G.; Valente, M. T. REST vs GraphQL: A Controlled Experiment. ICSA, 2020.
+  \end{enumerate}
+\end{frame}
+
+\end{document}

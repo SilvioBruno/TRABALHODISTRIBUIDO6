@@ -1,0 +1,5 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:streaming.musicas">
+  <soapenv:Body>
+    <urn:listarUsuarios/>
+  </soapenv:Body>
+</soapenv:Envelope>

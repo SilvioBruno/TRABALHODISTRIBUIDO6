@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+grpc_gen/
+_diagrama.jpg
+_mascara.png
+_mascara_small.png
+_slide.png
+_crop_usuario.png
+_crop_musica.png
+_crop_playlist.png
